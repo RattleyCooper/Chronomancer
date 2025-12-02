@@ -218,7 +218,26 @@ suite "Cancelable When":
     clock.tick(false)
     assert whenAfterC.value == 1
 
+var manId = newTestObj()
+suite "Getting IDs Manually":
+  test "ID Verification Through Cancellation":
+    let cb1 = clock.callbackId()
+    let wa1 = clock.watcherId()
+    clock.watch manId.value == 0, every(1) do():
+      manId.value += 1
 
+    assert clock.multiShots.len == 5
+    clock.tick(false)
+    clock.cancel(wa1)
+    assert clock.multiShots.len == 5
+    assert manId.value == 0
+    clock.tick(false)
+    assert manId.value == 1
+    clock.cancel(cb1)
+    assert clock.multiShots.len == 4
+    clock.tick(false)
+    assert manId.value == 1
+    
 # Run the sim for 5 seconds.
 var t = 0
 clock.run every(60) do():
@@ -228,27 +247,30 @@ clock.run every(60) do():
 for i in 0..clock.multiShots.high:
   clock.multiShots[i].frame = 1
 
-assert clock.oneShots.len == 0
-
-echo "Running sim for 5 seconds..."
+echo "\nRunning sim for 5 seconds..."
 while t < 5:
   clock.tick()
 
-# Asserts
 suite "Ending States":
+  test "MultiShot Count":
+    assert clock.multiShots.len == 5
+    
+  test "OneShot Count":
+    assert clock.oneShots.len == 0
+
   test "Clear Callbacks":
     clock.clear()
     assert clock.multiShots.len == 0
     assert clock.oneShots.len == 0
 
   test "Check Values":
-    assert runEvery.value == 328
+    assert runEvery.value == 331
     assert runAfter.value == 1
     assert scheduleEvery.value == 1
     assert scheduleAfter.value == 1
     assert watchEvery.value == 1
     assert watchAfter.value == 1
-    assert whenEvery.value == 319
+    assert whenEvery.value == 322
     assert whenAfter.value == 1
     assert watchEveryC.value == 1
     assert watchAfterC.value == 1
