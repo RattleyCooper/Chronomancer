@@ -62,7 +62,7 @@ proc tick*(f: ReacTick, controlFlow: bool = true) =
       f.multiShots[i].body()
       if i > f.multiShots.high:
         break
-      f.multiShots[i].frame += 1
+      f.multiShots[i].frame = 1
       when defined(profileTick):
         ranProcs = true
     else:
