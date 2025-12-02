@@ -163,7 +163,10 @@ clock.cancelable:
 
 > Note: `watch` combined with `after` will only execute code *once* while the condition remains `true`, unlike `every` which gives you *repeating* executions *while* the condition remains `true`.
 
-`when` Runs callbacks when a condition is `true`, then self-destructs.
+`when` Runs callbacks when a condition is `true`, then self-destructs the watcher that monitors the condition. Combining `when` with `every` will
+create a watcher, but the callback itself will continue running unless canceled explicitly.
+
+`when`/`after` -> Cancels the watcher and the callback
 
 ```nim
 # Cats will learn to hunt *once* the first time they reach starving condition
@@ -171,7 +174,9 @@ clock.when cat.hunger >= 60, after(60) do():
   cat.learnHunting()
 ```
 
-## 🛑 Scheduling & Cancellation (Preventing Crashes)
+`when`/`every` -> Only cancels the watcher.
+
+## 🛑 Cancellation (Preventing Crashes)
 
 Sometimes you schedule something to happen later (e.g., "Heal player in 3 seconds"), but the entity dies before that happens.
 
@@ -196,7 +201,8 @@ var clock = ReacTick(fps: 60)
 var scrubs = newCat("Scrubs")
 
 # Schedule a task for the future
-# Use 'schedule' instead of 'run' to get the Task ID
+# Use 'schedule' instead of 'run' to 
+# get the Task ID returned
 let renameTask = clock.schedule after(60) do():
   # If 'scrubs' is nil when this runs, the game crashes!
   if scrubs != nil:
@@ -218,11 +224,45 @@ clock.cancel(renameTask)
 clock.tick()
 ```
 
-Use `schedule` to get an ID, and `cancel` to stop it.
+You can use `schedule` to get an ID returned, and `cancel` to stop it, but that's not the only way...
 
-### 🎒 The "Bag of Tasks" Pattern (Recommended)
+### 🆔 Getting Watcher/Callback IDs Manually
 
-**For entities with multiple tasks**, store all task IDs in a `seq[int]` and `cancel` them all at once:
+`ReacTick.watcherId()` -> The id used to cancel the "watchers" reactive primitives like `watch` and `when`. 
+
+Watchers use `ReacTick.run every(ReacTick.watcherInterval) do():` to monitor their conditionals, so you need 2 ids(`watcherId` and `callbackId`) to cancel a `watch` or `when` callback.
+
+`ReacTick.callbackId()` -> The id used to cancel execution of the code you wrote in your callback.
+
+You can get watcher/callback ids by using the `ReacTick.callbackId()` and/or `ReacTick.watcherId()` procs to store the ids manually to `cancel` later, or
+use the id within a callback explicitly.
+
+> Note: You must call `callbackId`/`watcherId` from OUTSIDE the scope of the callback.
+
+## ✔️👍 Getting Task ID Correctly 
+```nim
+var clock = ReacTick(fps: 60)
+
+# Get callback id from outside callback scope
+let cb1 = clock.callbackId()
+clock.run every(60) do():
+  # Logic...
+  clock.cancel(cb1)
+```
+## ❌👎 Getting Task ID INCORRECTLY
+```nim
+var clock = ReacTick(fps: 60)
+
+# INCORRECT! This will lead to 
+clock.run every(60) do():
+  let cb2 = clock.callbackId()
+  # Logic...
+  clock.cancel(cb2)
+```
+
+### 🎒 The "Bag of Tasks" Pattern
+
+**For entities that might become `nil`**, store all task IDs in a `seq[int]` and `cancel` them all at once:
 
 ```nim
 type Enemy = ref object
@@ -230,12 +270,12 @@ type Enemy = ref object
   hp: int
   tasks: seq[int]  # Bag of all scheduled task IDs
 
-proc setupEnemy(enemy: Enemy, clock: var ReacTick) =
+proc setupEnemy(enemy: Enemy, clock: ReacTick) =
   # Track enemy state changes to cancel later
   enemy.tasks.add clock.schedule after(600) do():
     enemy.nextState()
 
-proc removeEnemy(enemy: Enemy, clock: var ReacTick) =
+proc removeEnemy(enemy: Enemy, clock: ReacTick) =
   # Cancel ALL tasks with one call and clears their task list.
   clock.cancel(enemy.tasks)
   # Now safe to remove enemy from the game
@@ -280,20 +320,22 @@ clock.when enemy.hp <= 0, after(1) do():
   enemy.die() # presumably canceling tasks in enemy.die()
 ```
 
-| API | Runs  | Repeats? | Stops automatically? | Returns Task ID | Task Ids Needed to Cancel |
+| API | Runs  | Repeats? | Stops automatically? | Returns Task ID | Task Id Needed to Cancel |
 | --- | ----- | -------- | -------------------- | --- | --- |
-| `run every(N)`| Every N frames |✔️|❌|❌| 1 |
-| `run after(N)`| Once |❌|✔️|❌| 1 |
+| `run every(N)`| Every N frames |✔️|❌|❌| `callbackId` |
+| `run after(N)`| Once |❌|✔️|❌| `callbackId` |
 | `schedule every(N)` | Every N frames |✔️|❌|✔️| Use Returned |
 | `schedule after(N)` | Once  | ❌  | ✔️  |✔️| Use Returned |
-| `watch cond, every(N)` | Every N frames *while cond is true* |✔️|✔️ (until cond true again) |❌| 2 |
-| `watch cond, after(N)` | Once N frames *when cond* is true |❌|✔️ (util cond true again)|❌| 2 |
-| `when cond, after(N)`| Once |❌| ✔️ **Always self-cancels**|❌| 2 |
+| `watch cond, every(N)` | Every N frames *while cond is true* |✔️|✔️ (until cond true again) |❌| `watcherId` & `callbackId` |
+| `watch cond, after(N)` | Once N frames *when cond* is true |❌|✔️ (util cond true again)|❌| `watcherId` & `callbackId` |
+| `when cond, every(N)` | Every N frames `after` condition is true | ❌/✔️ ***Callback* repeats** | ✔️/❌ ***Watcher* self-cancels** | ❌ | `watcherId` & `callbackId` |
+| `when cond, after(N)`| Once |❌| ✔️ **Always self-cancels**|❌| `watcherId` & `callbackId` |
+
 
 
 ## 🔒 Cancelable Blocks
 
-Sometimes you want a whole block of watchers and tasks to be removed permanently after some condition succeeds.
+Sometimes you want a whole block of watchers and tasks to be removed permanently after some condition succeeds. You can use the `ReacTick.cancelable` block to enable `ReacTick.cancel()` without needing to pull in the `watcherId` or `callbackId` manually.
 
 Use:
 
@@ -303,11 +345,13 @@ clock.cancelable:
   # canceled with `cancel` within their closure.
   clock.watch something, every(30) do():
     if done:
-      clock.cancel() # removes everything defined in this block and the watcher
+      # Removes the watcher / callback
+      clock.cancel() 
 
   clock.watch somethingElse, every(30) do():
     if done:
-      clock.cancel() # Removes this individual watcher/callback.
+      # Removes the watcher / callback
+      clock.cancel()
 ```
 
 This is ideal for:
@@ -338,6 +382,7 @@ clock.cancelable:
 Gets transformed into this code:
 
 ```nim
+# Creates a local scope.
 block:
   # Pulls in ids that will be used for the
   # closures.
@@ -354,38 +399,77 @@ block:
       scrubs.takeWaterDamage()
 ```
 
-## Canceling `watch`ers and their closures explicitly
-
-If you want to cancel things explicitly you can get the task ids using `ReacTick.nextIds(amount)`. The `amount` defaults to `2` and returns a sequence containing your ids. `2` ids are needed for the `watch`er and it's associated closure. This is good for objects that may become `nil` and hold their task ids. `nextIds` must be called just before creating the `watch`er.
-
-```nim
-# Need to get 2 ids to cancel a watcher and the associated closure.
-enemy.tasks.add clock.nextIds()
-clock.watch enemy.onFire, every(60) do():
-  enemy.takeFireDamage()
-
-# Remove enemy tasks before they become nil
-# to prevent accessing invalid memory.
-clock.cancel enemy.tasks
-```
-
-> This is useful when you need to manually cancel a `watch` before its condition resolves (e.g., when an entity is destroyed).
-
 ## 🧩 Patterns & Usage
 
-### ✔ Reversible Behaviors → `watch`
+### `watch every(N)`
 
-Use `watch` for things that should repeatedly activate while a condition is true:
+### ✅ Example: Taking Damage While Standing in Hazardous Water
 
-* hunger → meow → eat → satisfied
-* low stamina → nap → rested
-* poisoned → lose health → cured
+Whenever a player is standing in toxic water, they should take damage every 1 second.
+When they step out, the damage should immediately stop.
+If they step back in, the cycle restarts.
 
-`watch` *automatically stops* when the condition becomes false, and *continues* when the condition becomes true. This facilitates the creation of complex state transitions with a clean, declarative syntax.
+That is exactly:
 
-### ✔ One-Shot Triggers → `when`
+```nim
+clock.watch player.inToxicWater, every(60):
+  player.takeDamage 5
+```
 
-Use `when` for:
+Player steps into toxic water → `inToxicWater` becomes `true`
+
+Clock starts running the callback every 1 second:
+
+1s → takeDamage(5)
+
+2s → takeDamage(5)
+
+3s → takeDamage(5)
+...
+
+1. Player stays in toxic water
+2. Damage keeps repeating every second.
+3. Player steps out of toxic water → condition becomes false
+4. The repeating callback stops immediately.
+5. Player steps back into toxic water later
+6. The repeating schedule starts again.
+
+Simply:
+
+* Condition turning `true` → schedule the ***repeating*** action
+* Condition staying `true` → ***keep repeating***
+* Condition turning `false` → cancels the pending trigger
+* Condition becoming `true` again → schedule again
+
+### `watch after(N)`
+
+### ✅ Example: Charge-Up Buff When Standing Still
+
+A player gains a focus buff if they stand still for 3 seconds, but the buff should not re-apply every 3 seconds as long as they stay still.
+
+That’s exactly:
+
+```nim
+clock.watch player.isStandingStill, after(180):
+  player.applyBuff Focus
+```
+
+1. Player stops moving → `isStandingStill` becomes `true`
+2. Clock waits 3 seconds
+3. Buff is applied once
+4. Player continues standing still → no retrigger
+5. Buff only retriggers after the player moves again and stops again
+
+Simply:
+
+* Condition turning `true` → schedule the ***delayed*** action
+* Condition staying `true` → do nothing
+* Condition turning `false` → cancels the pending trigger
+* Condition becoming `true` again → schedule again
+
+### `when after(N)`
+
+Use `when after(N)` for:
 
 * achievements
 * permanent skill unlocks
