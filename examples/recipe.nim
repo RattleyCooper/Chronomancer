@@ -128,3 +128,29 @@ kitchen.watch oven.temp >= oven.targetTemp and oven.contains != nil, every(1) do
 while true:
   kitchen.tick()
 
+# Output:
+
+# Preheating oven to 350
+
+# Combining Dry!
+# Combining 0.75 cups Sugar
+# Combining 1.0 tspn Baking Soda
+# Combining 0.1 tspn Salt
+# Dry ingredients combined
+
+# Combining Wet!
+# Combining 3.0 whole Banana
+# Combining 1.0 whole Egg
+# Combining 0.3333333333333333 cups Butter
+# Combining 1.0 tspn Vanilla Extract
+# Wet ingredients combined
+
+# Start mixing!
+# Dry/wet ingredients mixed!
+
+# Start Pouring!
+# Mix is poured
+# Oven preheated to 350F
+
+# Placing banana bread in the oven!
+# Banana Bread is done!
