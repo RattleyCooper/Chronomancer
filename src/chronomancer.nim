@@ -20,7 +20,7 @@ type
     target*: uint
     id*: int
 
-  ReacTick* = ref object
+  Chronomancer* = ref object
     multiShots*: seq[MultiShot]
     oneShots*: seq[OneShot]
     last*: MonoTime
@@ -36,15 +36,15 @@ proc pause*(r: ReacTick) =
   r.previousTime.scale.value = r.time.scale.value
   r.time.scale.value = 0.0
 
-proc resume*(r: ReacTick) =
+proc resume*(r: Chronomancer) =
   r.time.scale.value = r.previousTime.scale.value
 
-proc clear*(reactick: ReacTick) =
+proc clear*(reactick: Chronomancer) =
   # Clear the closures from the reactick.
   reactick.multiShots.setLen(0)
   reactick.oneShots.setLen(0)
 
-proc genId*(reactick: ReacTick): int =
+proc genId*(reactick: Chronomancer): int =
   # Create an id for the next registered closure.
   result = reactick.nextId
   inc reactick.nextId
@@ -53,16 +53,16 @@ proc frameTime*(frames: int): int =
   # Calculate frames per second.
   1_000_000 div frames
 
-proc targetUs*(r: ReacTick): int =
+proc targetUs*(r: Chronomancer): int =
   (r.frameDuration.float / r.time.scale.value).int
 
-template ControlFlow*(f: ReacTick) =
+template ControlFlow*(f: Chronomancer) =
   # Control flow for ticking. Ensures callbacks don't execute until 
   # a frame tick is valid.
   if (getMonoTime() - f.last).inMicroseconds < f.targetUs():
     return
 
-proc tick*(f: ReacTick, controlFlow: bool = true) =
+proc tick*(f: Chronomancer, controlFlow: bool = true) =
   # Processes callbacks.
   if f.time.scale.value == 0.0:
     return
@@ -137,30 +137,30 @@ proc every*(frames: int, body: proc() {.closure.}): MultiShot =
     id: -1
   )
 
-proc run*(f: ReacTick, a: OneShot) =
-  # Register a OneShot with ReacTick
+proc run*(f: Chronomancer, a: OneShot) =
+  # Register a OneShot with Chronomancer
   a.id = f.genId()
   f.oneShots.add a
 
-proc run*(f: ReacTick, e: MultiShot) =
-  # Register a MultiShot with ReacTick
+proc run*(f: Chronomancer, e: MultiShot) =
+  # Register a MultiShot with Chronomancer
   e.id = f.genId()
   f.multiShots.add e
 
-proc schedule*(f: ReacTick, a: OneShot): int =
+proc schedule*(f: Chronomancer, a: OneShot): int =
   # Same as run, but returns the id you can use to cancel the closure.
   a.id = f.genId()
   f.oneShots.add a
   a.id
 
-proc schedule*(f: ReacTick, e: MultiShot): int =
+proc schedule*(f: Chronomancer, e: MultiShot): int =
   # Same as run, but returns the id you can use to cancel the closure.
   e.id = f.genId()
   f.multiShots.add e
   e.id
 
-proc cancel*(f: ReacTick, id: int) =
-  # Removes task from ReacTick.
+proc cancel*(f: Chronomancer, id: int) =
+  # Removes task from Chronomancer.
   when defined(debug):
     echo "cancel called with id: ", id
   for i in countdown(f.multiShots.high, 0):
@@ -173,20 +173,20 @@ proc cancel*(f: ReacTick, id: int) =
       f.oneShots.delete(i)
       return
 
-proc cancel*(f: ReacTick, ids: var seq[int]) =
+proc cancel*(f: Chronomancer, ids: var seq[int]) =
   # Batch cancellation. Removes all tasks in the list and clears the list.
   for i in countdown(ids.high, 0):
     f.cancel(ids[i])
   ids.setLen(0)
 
-template cancel*(f: ReacTick): untyped =
-  # Cancel from within a ReacTick.cancelable block.
+template cancel*(f: Chronomancer): untyped =
+  # Cancel from within a Chronomancer.cancelable block.
   when defined(debug):
     echo "Canceling ", watcherId, " and ", cbId
   f.cancel(watcherId)
   f.cancel(cbId)
 
-proc nextIds*(f: ReacTick, amount: int = 2): seq[int] =
+proc nextIds*(f: Chronomancer, amount: int = 2): seq[int] =
   # Quick grab ids to cancel. Good for adding multiple task ids to a seq.
   result.add f.nextId
   var startingId = f.nextId
@@ -194,7 +194,7 @@ proc nextIds*(f: ReacTick, amount: int = 2): seq[int] =
     result.add startingId + 1
     startingId += 1
 
-template watch*(f: ReacTick, cond: untyped, m: MultiShot): untyped =
+template watch*(f: Chronomancer, cond: untyped, m: MultiShot): untyped =
   # Waits until condition is true before scheduling multishot. Cancels
   # multishot once condition is false. Reschedules/cancels based on
   # condition and requires explicit cancellation. 
@@ -215,7 +215,7 @@ template watch*(f: ReacTick, cond: untyped, m: MultiShot): untyped =
       f.cancel(cbId)
       triggered = false
 
-template watch*(f: ReacTick, cond: untyped, o: OneShot): untyped =
+template watch*(f: Chronomancer, cond: untyped, o: OneShot): untyped =
   # Waits until condition is true before scheduling oneshot. Cancels 
   # oneshot if the condition isn't true before the oneshot is 
   # called. Watcher must be canceled explicitly.
@@ -235,7 +235,7 @@ template watch*(f: ReacTick, cond: untyped, o: OneShot): untyped =
       f.cancel(cbId)
       triggered = false
 
-template `when`*(f: ReacTick, cond: untyped, m: MultiShot): untyped =
+template `when`*(f: Chronomancer, cond: untyped, m: MultiShot): untyped =
   # Triggers multishot when the condition is met. Multishot persists
   # unless canceled explicitly.
   let cbId = f.genId()
@@ -250,7 +250,7 @@ template `when`*(f: ReacTick, cond: untyped, m: MultiShot): untyped =
       )
       f.cancel(nid)
 
-template `when`*(f: ReacTick, cond: untyped, o: OneShot): untyped =
+template `when`*(f: Chronomancer, cond: untyped, o: OneShot): untyped =
   # Triggers oneshot when the condition is met. Since oneshots terminate
   # themselves, no canceling is required.
   let cbId = f.genId()
@@ -265,7 +265,7 @@ template `when`*(f: ReacTick, cond: untyped, o: OneShot): untyped =
       )
       f.cancel(nid)
 
-template `while`*(f: ReacTick, cond: untyped, whileIn: untyped, onExit: untyped): untyped =
+template `while`*(f: Chronomancer, cond: untyped, whileIn: untyped, onExit: untyped): untyped =
   var active = false
   f.run every(f.watcherInterval) do():
     let conditionMet = (`cond`)
@@ -276,7 +276,34 @@ template `while`*(f: ReacTick, cond: untyped, whileIn: untyped, onExit: untyped)
       active = false
       onExit
 
-template mode*(f: ReacTick, cond: untyped, onEnter: untyped, onExit: untyped): untyped =
+template `while`*(f: Chronomancer, cond: untyped, limit: int = -1, whileIn: untyped, onExit: untyped): untyped =
+  var active = false
+  var rate = f.watcherInterval
+  if limit > 0:
+    rate = limit
+  f.run every(rate) do():
+    let conditionMet = (`cond`)
+    if conditionMet:
+      active = true
+      whileIn
+    elif not conditionMet and active:
+      active = false
+      onExit
+
+template until*(f: Chronomancer, cond: untyped, whileIn: untyped, onExit: untyped): untyped =
+  var active = false
+  var cbId = f.callbackId()
+  f.run every(f.watcherInterval) do():
+    let conditionMet = (`cond`)
+    if not conditionMet:
+      active = true
+      whileIn
+    elif conditionMet and active:
+      active = false
+      onExit
+      f.cancel(cbId)
+
+template mode*(f: Chronomancer, cond: untyped, onEnter: untyped, onExit: untyped): untyped =
   var active = false
   f.run every(f.watcherInterval) do():
     let conditionMet = (`cond`)
@@ -288,7 +315,7 @@ template mode*(f: ReacTick, cond: untyped, onEnter: untyped, onExit: untyped): u
       active = false
       onExit
 
-template toggle*(f: ReacTick, cond: untyped, action: untyped): untyped =
+template toggle*(f: Chronomancer, cond: untyped, action: untyped): untyped =
   var active = false
   f.run every(f.watcherInterval) do():
     let conditionMet = (`cond`)
@@ -300,7 +327,7 @@ template toggle*(f: ReacTick, cond: untyped, action: untyped): untyped =
     elif not conditionMet:
       active = false
 
-template latch*(f: ReacTick, cond: untyped, action: untyped): untyped =
+template latch*(f: Chronomancer, cond: untyped, action: untyped): untyped =
   var triggered = false
   let cbId = f.callbackId()
   f.run every(f.watcherInterval) do():
@@ -309,7 +336,7 @@ template latch*(f: ReacTick, cond: untyped, action: untyped): untyped =
       action
       f.cancel(cbId)
 
-template cooldown*(f: ReacTick, cond: untyped, interval: int, action: untyped): untyped =
+template cooldown*(f: Chronomancer, cond: untyped, interval: int, action: untyped): untyped =
   var ready = true
   f.run every(f.watcherInterval) do():
     if (`cond`) and ready:
@@ -318,7 +345,7 @@ template cooldown*(f: ReacTick, cond: untyped, interval: int, action: untyped): 
       f.run after(interval) do():
         ready = true
 
-template reactVar*(f: ReacTick, variable: untyped, body: untyped): untyped =
+template reactVar*(f: Chronomancer, variable: untyped, body: untyped): untyped =
   var oldValue = `variable`
   f.run every(f.watcherInterval) do():
     let newValue = `variable`
@@ -331,9 +358,9 @@ proc mutable*[T](value: T): Mutable[T] =
   result.new()
   result.value = value
 
-proc newReacTick*(fps: int = 60, watcherInterval: int = 1): ReacTick =
-  # Create a new ReacTick object!
-  var f: ReacTick
+proc newChronomancer*(fps: int = 60, watcherInterval: int = 1): Chronomancer =
+  # Create a new Chronomancer object!
+  var f: Chronomancer
   f.new()
   f.fps = fps
   f.frame = 0.uint
@@ -347,20 +374,20 @@ proc newReacTick*(fps: int = 60, watcherInterval: int = 1): ReacTick =
   f.frameDuration = frameTime(f.fps)
   return f
 
-template watcherIds*(f: ReacTick) =
-  # Used for the ReacTick.cancel macro.
+template watcherIds*(f: Chronomancer) =
+  # Used for the Chronomancer.cancel macro.
   var watcherId {.inject.} = f.nextId + 1
   var cbId {.inject.} = f.nextId
 
-proc watcherId*(f: ReacTick): int =
+proc watcherId*(f: Chronomancer): int =
   # Get the Task ID for the watcher.
   f.nextId + 1
 
-proc callbackId*(f: ReacTick): int =
+proc callbackId*(f: Chronomancer): int =
   # Get the Task ID for the callback.
   f.nextId
 
-macro cancelable*(f: ReacTick, x: untyped): untyped =
+macro cancelable*(f: Chronomancer, x: untyped): untyped =
   # Create a block of watch/when statements that can be easily canceled
   # from within the watch/when block.
   result = newStmtList()
@@ -373,7 +400,7 @@ macro cancelable*(f: ReacTick, x: untyped): untyped =
 
 # === EXAMPLE ===
 if isMainModule:
-  var clock = ReacTick(fps: 60)
+  var clock = Chronomancer(fps: 60)
 
   type 
     Cat = ref object
