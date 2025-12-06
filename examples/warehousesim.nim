@@ -6,12 +6,12 @@
 #
 #
 
-import ../src/reactick
+import ../src/chronomancer
 import std/random, strformat
 
 randomize()
 var r = initRand()
-var clock = newReacTick(fps=60*4)
+var clock = newChronomancer(fps=60*4)
 var ticks = 0
 var hrs8 = 1920
 
@@ -233,7 +233,7 @@ proc assignBrain(w: Worker) =
 proc setupSim(c: int) =
   let i = c
   var mcNames = @[
-    "J", "A", "L", "R", "P", "M", "D", "J", "D", "E"
+    "J", "A", "L", "R", "P", "M", "D", "J2", "D2", "E"
   ]
   workers[i].name.value = mcNames[i]
   let name = workers[i].name.value
@@ -241,16 +241,19 @@ proc setupSim(c: int) =
   if name == "J":
     workers[i].laziness.value = 3
     workers[i].snipesOrders.value = true
-  if name == "D":
+  elif name == "D":
     workers[i].laziness.value = 2
     workers[i].snipesOrders.value = true
+  elif name == "D2":
+    workers[i].efficiency.value = 4
   elif name == "A":
     workers[i].laziness.value = 1
+    workers[i].efficiency.value = 2
   elif name == "P":
     workers[i].laziness.value = 2
-    workers[i].efficiency.value = 2
+    workers[i].efficiency.value = 3
     workers[i].triage.value = true
-  elif name == "J":
+  elif name == "J2":
     workers[i].laziness.value = 1
 
   let state = workers[i].action

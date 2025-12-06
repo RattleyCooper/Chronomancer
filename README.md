@@ -1,8 +1,10 @@
-# ⏱️ ReacTick
+# 🧙‍♂️ Chronomancer ⏱️
+
+> Time is not a loop, it’s a dimension of state. This library lets you reason about it declaratively.
 
 Deterministic frame-based scheduling for games, AI, and simulations.
 
-ReacTick is a tiny, fast, deterministic scheduler for running closures every `N` frames or after `N` frames, with *reactive scheduling conditions* that execute code when conditions are met.
+Chronomancer is a tiny, fast, deterministic scheduler for running closures every `N` frames or after `N` frames, with *reactive scheduling conditions* that execute code when conditions are met.
 
 It gives you:
 
@@ -24,10 +26,10 @@ Perfect for:
 * Procedural encounters
 * Anything that should happen later, periodically, or based on conditions
 
-ReacTick makes reactive temporal logic simple. Here's a simple example. 
+Chronomancer makes reactive temporal logic simple. Here's a simple example. 
 
 If a player is in water, but hasn't learned to swim, they should take water damage
-every second (assuming 60fps ReacTick). The following code is all you need 
+every second (assuming 60fps Chronomancer). The following code is all you need 
 to toggle water damage on a player that's currently in water. Player enters water, they take damage. Player exits water and they stop taking damage. Once they learn
 to swim, this watcher and the associated callback will no longer be checked and the player will no longer take damage in water.
 
@@ -53,7 +55,7 @@ Game timing often gets messy:
 * Update order bugs
 * Losing track of cooldowns or “run this later” logic
 
-`ReacTick` solves this with:
+`Chronomancer` solves this with:
 
 ✔️ Clean declarative scheduling
 
@@ -70,13 +72,13 @@ Game timing often gets messy:
 You just tell it *when* and *what* to run.
 
 ## 📦 Install
-`nimble install https://github.com/RattleyCooper/ReacTick`
+`nimble install https://github.com/RattleyCooper/Chronomancer`
 
 ## 🚀 Quick Start
 ```nim
-import reactick
+import chronomancer
 
-var clock = newReacTick(fps=60)
+var clock = newChronomancer(fps=60)
 
 clock.run every(60) do():  # every 1 second at 60fps
   echo "One second passed!"
@@ -203,7 +205,7 @@ If you don't cancel the task, the closure will still run and try to heal a dead 
 Imagine we schedule a name change for a `cat`, but we delete the `cat` variable before the schedule fires.
 
 ```nim
-import reactick
+import chronomancer
 
 type Cat = ref object
   name: string
@@ -213,7 +215,7 @@ proc newCat(name: string): Cat =
   result.new()
   result.name = name
 
-var clock = newReacTick(fps=60)
+var clock = newChronomancer(fps=60)
 var scrubs = newCat("Scrubs")
 
 # Schedule a task for the future
@@ -244,20 +246,20 @@ You can use `schedule` to get an ID returned, and `cancel` to stop it, but that'
 
 ### 🆔 Getting Watcher/Callback IDs Manually
 
-`ReacTick.watcherId()` -> The id used to cancel the "watchers" reactive primitives like `watch` and `when`. 
+`Chronomancer.watcherId()` -> The id used to cancel the "watchers" reactive primitives like `watch` and `when`. 
 
-Watchers use `ReacTick.run every(ReacTick.watcherInterval) do():` to monitor their conditionals, so you need 2 ids(`watcherId` and `callbackId`) to cancel a `watch` or `when` callback.
+Watchers use `Chronomancer.run every(Chronomancer.watcherInterval) do():` to monitor their conditionals, so you need 2 ids(`watcherId` and `callbackId`) to cancel a `watch` or `when` callback.
 
-`ReacTick.callbackId()` -> The id used to cancel execution of the code you wrote in your callback.
+`Chronomancer.callbackId()` -> The id used to cancel execution of the code you wrote in your callback.
 
-You can get watcher/callback ids by using the `ReacTick.callbackId()` and/or `ReacTick.watcherId()` procs to store the ids manually to `cancel` later, or
+You can get watcher/callback ids by using the `Chronomancer.callbackId()` and/or `Chronomancer.watcherId()` procs to store the ids manually to `cancel` later, or
 use the id within a callback explicitly.
 
 > Note: You must call `callbackId`/`watcherId` from OUTSIDE the scope of the callback.
 
 ## ✔️👍 Getting Task ID Correctly 
 ```nim
-var clock = newReacTick(fps=60)
+var clock = newChronomancer(fps=60)
 
 # Get callback id from outside callback scope
 let cb1 = clock.callbackId()
@@ -267,7 +269,7 @@ clock.run every(60) do():
 ```
 ## ❌👎 Getting Task ID INCORRECTLY
 ```nim
-var clock = newReacTick(fps=60)
+var clock = newChronomancer(fps=60)
 
 # INCORRECT! This will lead to 
 clock.run every(60) do():
@@ -286,12 +288,12 @@ type Enemy = ref object
   hp: int
   tasks: seq[int]  # Bag of all scheduled task IDs
 
-proc setupEnemy(enemy: Enemy, clock: ReacTick) =
+proc setupEnemy(enemy: Enemy, clock: Chronomancer) =
   # Track enemy state changes to cancel later
   enemy.tasks.add clock.schedule after(600) do():
     enemy.nextState()
 
-proc removeEnemy(enemy: Enemy, clock: ReacTick) =
+proc removeEnemy(enemy: Enemy, clock: Chronomancer) =
   # Cancel ALL tasks with one call and clears their task list.
   clock.cancel(enemy.tasks)
   # Now safe to remove enemy from the game
@@ -299,7 +301,7 @@ proc removeEnemy(enemy: Enemy, clock: ReacTick) =
 
 ## 👀 Reactive Scheduling with Conditions
 
-(The most powerful part of ReacTick)
+(The most powerful part of Chronomancer)
 
 `watch condition, every(N)`
 
@@ -346,12 +348,12 @@ clock.when enemy.hp <= 0, after(1) do():
 | `watch cond, after(N)` | Once N frames *when cond* is true |❌|✔️ (util cond true again)|❌| `watcherId` & `callbackId` |
 | `when cond, every(N)` | Every N frames `after` condition is true | ❌/✔️ ***Callback* repeats** | ✔️/❌ ***Watcher* self-cancels** | ❌ | `watcherId` & `callbackId` |
 | `when cond, after(N)`| Once |❌| ✔️ **Always self-cancels**|❌| `watcherId` & `callbackId` |
-| `mode` | `every(ReacTick.watcherInterval)` | ✔️ | ❌ | ❌ | `callbackId` |
+| `mode` | `every(Chronomancer.watcherInterval)` | ✔️ | ❌ | ❌ | `callbackId` |
 
 
 ## 🔒 Cancelable Blocks
 
-Sometimes you want a whole block of watchers and tasks to be removed permanently after some condition succeeds. You can use the `ReacTick.cancelable` block to enable `ReacTick.cancel()` without needing to pull in the `watcherId` or `callbackId` manually.
+Sometimes you want a whole block of watchers and tasks to be removed permanently after some condition succeeds. You can use the `Chronomancer.cancelable` block to enable `Chronomancer.cancel()` without needing to pull in the `watcherId` or `callbackId` manually.
 
 Use:
 
@@ -380,7 +382,7 @@ This is ideal for:
 
 > *Examples in readme.*
 
-`ReacTick.cancelable` does something under the hood using macros.
+`Chronomancer.cancelable` does something under the hood using macros.
 
 This code:
 
@@ -510,10 +512,10 @@ Example: *"learning to swim”*:
 
 ### ✅ Example: Use `mode` to scale time in "slow-mo zone"
 
-`ReacTick` lets you change the speed of your game logic dynamically, allowing for "bullet-time", dynamic difficulty, or changing simulation speeds:
+`Chronomancer` lets you change the speed of your game logic dynamically, allowing for "bullet-time", dynamic difficulty, or changing simulation speeds:
 
 ```nim
-var clock = newReacTick(fps=60)
+var clock = newChronomancer(fps=60)
 
 # Slow motion
 clock.timescale = 0.5  # Half speed
@@ -547,7 +549,7 @@ if isMainModule:
   # The fps value defines your logical update 
   # rate. every(60) means ‘every 60 logical 
   # frames’, not real-time seconds.
-  var clock = newReacTick(fps=60)
+  var clock = newChronomancer(fps=60)
 
   type 
     Cat = ref object
@@ -683,11 +685,11 @@ if isMainModule:
 
 ## ⏱️ About Delta-Time (Do You Need It?)
 
-`ReacTick` does not use delta-time internally — and it doesn’t need to.
+`Chronomancer` does not use delta-time internally — and it doesn’t need to.
 
 Why?
 
-Because `ReacTick` is not a game loop or physics integrator.
+Because `Chronomancer` is not a game loop or physics integrator.
 
 It’s simply:
 
@@ -708,7 +710,7 @@ Your frame loop could be tied to rendering, but it doesn't have to be.
 
 ## ❌ When Delta-Time Is Not Needed
 
-* If you are only using `ReacTick` as:
+* If you are only using `Chronomancer` as:
 * a scheduler
 * a timed-event system
 * a frame-based sequencer

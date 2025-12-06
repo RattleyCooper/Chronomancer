@@ -1,11 +1,11 @@
-import src/reactick
+import src/chronomancer
 import unittest2
 
 type 
   TestObj = ref object
     value: int
 
-var clock = newReacTick(fps=60)
+var clock = newChronomancer(fps=60)
 
 proc newTestObj(): TestObj =
   result.new()
@@ -240,7 +240,7 @@ suite "Getting IDs Manually":
 
 suite "State-Based":
   test "mode":
-    var modeClock = newReacTick(fps=60)
+    var modeClock = newChronomancer(fps=60)
     var modeObj = newTestObj()
     modeClock.mode modeObj.value == 0:
       modeObj.value += 1
@@ -253,31 +253,31 @@ suite "State-Based":
 
     check modeObj.value == 2
 
-  test "pulse":
-    var pulseClock = newReacTick(fps=60)
-    var pulseObj = newTestObj()
-    pulseClock.pulse pulseObj.value == 0:
-      pulseObj.value += 1
+  test "toggle":
+    var toggleClock = newChronomancer(fps=60)
+    var toggleObj = newTestObj()
+    toggleClock.toggle toggleObj.value == 0:
+      toggleObj.value += 1
 
-    pulseClock.tick(false)
-    pulseClock.tick(false)
-    pulseClock.tick(false)
+    toggleClock.tick(false)
+    toggleClock.tick(false)
+    toggleClock.tick(false)
 
-    check pulseObj.value == 1
-    pulseObj.value = 0
-    pulseClock.tick(false)
-    check pulseObj.value == 1
+    check toggleObj.value == 1
+    toggleObj.value = 0
+    toggleClock.tick(false)
+    check toggleObj.value == 1
 
 suite "Timescaling":
   test "Pause / Resume":
-    var pauseClock = newReacTick(fps=60)
+    var pauseClock = newChronomancer(fps=60)
     var counter = 0
     pauseClock.run every(1) do():
       counter += 1
       if counter == 5 or counter == 15:
         pauseClock.pause()
 
-    while pauseClock.timescale != 0.0:
+    while pauseClock.time.scale.value != 0.0:
       pauseClock.tick()
 
     check counter == 5
@@ -293,18 +293,18 @@ suite "Timescaling":
     check counter == 7
 
   test "Correct Timescale":
-    var tsClock = newReacTick(fps=60)
+    var tsClock = newChronomancer(fps=60)
     var c = 0
     let cbId = clock.callbackId()
     tsClock.run every(60) do():
       c += 1
       if c == 1:
         echo "2x slower..."
-        tsClock.timescale = 0.5
+        tsClock.time.scale.value = 0.5
         check tsClock.targetUs() == 33_332
       if c == 6:
         echo "2x faster..."
-        tsClock.timescale = 2.0 
+        tsClock.time.scale.value = 2.0 
         check tsClock.targetUs() == 8_333
       if c == 10:
         tsClock.cancel cbId

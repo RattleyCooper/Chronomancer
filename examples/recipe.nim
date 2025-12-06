@@ -1,8 +1,8 @@
-import ../src/reactick
+import ../src/chronomancer
 import strformat
 
 
-var kitchen = newReacTick(fps=30)
+var kitchen = newChronomancer(fps=30)
 
 # Define different types to create a model for a recipe
 type
