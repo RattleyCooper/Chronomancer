@@ -2,11 +2,11 @@ import std/[monotimes, times, macros]
 export times
 
 type
-  Mutable*[T] = ref object
+  Entangled*[T] = ref object
     value*: T
 
   TimeControl* = ref object
-    scale*: Mutable[float]
+    scale*: Entangled[float]
 
   OneShot* = ref object
     body*: proc() {.closure.}
@@ -32,7 +32,87 @@ type
     frameDuration*: int
     watcherInterval*: int = 1
 
-proc pause*(r: ReacTick) =
+  EntanglementKind* = enum
+    ekInt, ekFloat, ekBool, ekString
+  
+  Entanglement* = object
+    case kind: EntanglementKind
+    of ekInt: 
+      intVal*: int
+      intTether*: Entangled[int]
+    of ekFloat: 
+      floatVal*: float
+      floatTether*: Entangled[float]
+    of ekBool: 
+      boolVal*: bool
+      boolTether*: Entangled[bool]
+    of ekString:
+      strVal*: string
+      strTether*: Entangled[string]
+  
+  Knot* = object
+    frame*: int
+    entanglement*: Entanglement
+
+  Timeline* = ref object
+    frame*: int
+    knots*: seq[Knot]
+
+proc newTimeline*(): Timeline =
+  result.new()
+  result.frame = 1
+  result.knots = newSeq[Knot]()
+
+proc rewind*(timeline: Timeline) =
+  for i in countdown(timeline.knots.high, 0):
+    let knot = timeline.knots[i]
+    if timeline.frame == knot.frame:
+      case knot.entanglement.kind:
+      of ekBool:
+        let b = knot.entanglement.boolTether
+        b.value = knot.entanglement.boolVal
+      of ekFloat:
+        let f = knot.entanglement.floatTether
+        f.value = knot.entanglement.floatVal
+      of ekInt:
+        let t = knot.entanglement.intTether
+        t.value = knot.entanglement.intVal
+      of ekString:
+        let s = knot.entanglement.strTether
+        s.value = knot.entanglement.strVal
+
+proc knot*(frame: int, entanglement: Entanglement): Knot =
+  result.frame = frame
+  result.entanglement = entanglement
+
+proc entangle*(value: int, tether: Entangled[int]): Entanglement =
+  Entanglement(kind: ekInt, intVal: value, intTether: tether)
+
+proc entangle*(value: float, tether: Entangled[float]): Entanglement =
+  Entanglement(kind: ekFloat, floatVal: value, floatTether: tether)
+
+proc entangle*(value: bool, tether: Entangled[bool]): Entanglement =
+  Entanglement(kind: ekBool, boolVal: value, boolTether: tether)
+
+proc entangle*(value: string, tether: Entangled[string]): Entanglement =
+  Entanglement(kind: ekString, strVal: value, strTether: tether)
+
+proc `bind`*[T](timeline: Timeline, frame: int, value: T, entangled: Entangled[T]) =
+  timeline.knots.add knot(
+    frame = frame, 
+    entanglement = entangle(
+      value = value,
+      tether = entangled
+    )
+  )
+
+proc `bind`*(timeline: Timeline, frame: int, entanglement: Entanglement) =
+  timeline.knots.add knot(
+    frame = frame, 
+    entanglement = entanglement
+  )
+
+proc pause*(r: Chronomancer) =
   r.previousTime.scale.value = r.time.scale.value
   r.time.scale.value = 0.0
 
@@ -358,7 +438,7 @@ template reactVar*(f: Chronomancer, variable: untyped, body: untyped): untyped =
       let it {.inject.} = newValue
       body
 
-proc mutable*[T](value: T): Mutable[T] =
+proc entangled*[T](value: T): Entangled[T] =
   result.new()
   result.value = value
 
@@ -373,8 +453,8 @@ proc newChronomancer*(fps: int = 60, watcherInterval: int = 1): Chronomancer =
   f.last = getMonoTime()
   f.nextId = 0
   f.watcherInterval = watcherInterval
-  f.time = TimeControl(scale: mutable(1.0))
-  f.previousTime = TimeControl(scale: mutable(1.0))
+  f.time = TimeControl(scale: entangled(1.0))
+  f.previousTime = TimeControl(scale: entangled(1.0))
   f.frameDuration = frameTime(f.fps)
   return f
 
