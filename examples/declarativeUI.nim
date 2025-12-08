@@ -6,15 +6,22 @@ import vmath
 import nico
 import macros
 
-const orgName = "RattleyCooper"
-const appName = "Declarative UI Example"
+let orgName = "RattleyCooper"
+let appName = "Declarative UI with Chronomancer"
 
 var ui* = newChronomancer(fps=120)
 var mousePos* = ivec2(0, 0)
 
 type
   Box* = ref object
-    x*, y*, w*, h*: int
+    x*, y*, w*, h*, ox*, oy*: int
+
+proc newBox*(x, y, w, h: int): Box =
+  result.new()
+  result.x = x
+  result.y = y
+  result.w = w
+  result.h = h
 
 proc contains*(b: Box, v: IVec2): bool =
   let (x, y) = (v.x, v.y)
@@ -66,7 +73,9 @@ macro box*(r: Chronomancer, b: Box, mbtn: range[0..2], body: untyped): untyped =
   var onInside = newStmtList()
   var onOutside = newStmtList()
   var scopedCode = newStmtList()
+  var draw = newStmtList()
   var logic = newStmtList()
+  var child = newStmtList()
   result = newStmtList()
 
   for stmt in body:
@@ -82,18 +91,20 @@ macro box*(r: Chronomancer, b: Box, mbtn: range[0..2], body: untyped): untyped =
       of "inside": onInside = code
       of "outside": onOutside = code
       of "scoped": scopedCode.add code
-      of "child":
-        logic.add quote do:
-          `code`
+      of "draw": draw.add code
+      of "child": child.add code
 
   var td = ident("teardownIds")
+  let theBox = ident("box")
+  let drag = ident("dragging")
 
   if scopedCode.len != 0:
     logic.add quote do:
       `scopedCode`
 
   logic.add quote do:
-    var `td` = (-1, -1, -1, -1)
+    var `td` = (-1, -1, -1, -1, -1)
+    var `drag` = false
 
   if onHover.len != 0 and onExit.len != 0:
     logic.add quote do:
@@ -113,23 +124,33 @@ macro box*(r: Chronomancer, b: Box, mbtn: range[0..2], body: untyped): untyped =
           `onClick`
       do: discard
 
+  if onInside.len != 0 and onOutside.len != 0:
+    logic.add quote do:
+      `td`[3] = `r`.callbackId()
+      `r`.while `b`.contains(mousePos) or `drag`:
+        `onInside`
+      do: `onOutside`
+
   if onHold.len != 0 and onRelease.len != 0:
     logic.add quote do:
       `td`[2] = `r`.callbackId()
       `r`.while (`b`.contains(mousePos) and mousebtn(`mbtn`)):
         `onHold`
-      do: `onRelease`
+      do: 
+        `onRelease`
+        `drag` = false
 
-  if onInside.len != 0 and onOutside.len != 0:
+  if draw.len != 0:
     logic.add quote do:
-      `td`[3] = `r`.callbackId()
-      `r`.while `b`.contains(mousePos):
-        `onInside`
-      do: `onOutside`
+      `td`[4] = `r`.callbackId()
+      `r`.run every(1) do():
+        let `theBox` = `b`
+        `draw`
 
   result.add quote do:
     block:
       `logic`
+      `child`
 
   echo result.repr
 
@@ -139,52 +160,56 @@ let mainPanel = Box(
   w: 100, h: 100
 )
 
-let feedButton = Box(
-  x: 10, y: 10,
-  w: 10, h: 10
-)
-
-let cleanButton = Box(
+let closeButton = Box(
   x: 0, y: 0,
   w: 30, h: 30
 )
 
-ui.closeable:
+ui.closeable: 
   ui.box(mainPanel, 0):
     scoped:
-      # Set up main panel
+      var cornerx = mainPanel.x + mainPanel.w
+      var cornery = mainPanel.y + mainPanel.h
+      var grabOffset = ivec2(0, 0)
+    hold:
+      dragging = true
+      grabOffset = mousePos - ivec2(mainPanel.x, mainPanel.y)
+    release:
       discard
-    hover:
-      echo "In Panel"
-    exit:
-      echo "Out of panel"
+    inside:
+      if dragging:
+        mainPanel.x = mousePos.x - grabOffset.x
+        mainPanel.y = mousePos.y - grabOffset.y
+    outside:
+      discard
+    draw:
+      cornerx = mainPanel.x + mainPanel.w
+      cornery = mainPanel.y + mainPanel.h
+      setColor(66)
+      rectfill(mainPanel.x, mainPanel.y, cornerx, cornery)
+
     child:
-      ui.box(feedButton, 0):
+      ui.box(closeButton, 0):
         scoped:
-          var dragging = false
-          feedButton.x += mainPanel.x
-          feedButton.y += mainPanel.y
-        child:
-          ui.box(cleanButton, 0):
-            hover:
-              echo "in clean"
-            exit:
-              echo "out clean"
-            click:
-              echo "clean button clicked"
-              ui.close:
-                echo "Closed all"
+          closeButton.x += mainPanel.x
+          closeButton.y += mainPanel.y
+          var cornerx = closeButton.x + closeButton.w
+          var cornery = closeButton.y + closeButton.h
+          var color = 27
+          setColor(color)
+        draw:
+          closeButton.x = mainPanel.x + closeButton.ox
+          closeButton.y = mainPanel.y + closeButton.oy
+          cornerx = closeButton.x + closeButton.w
+          cornery = closeButton.y + closeButton.h
+          setColor(color)
+          rectfill(closeButton.x, closeButton.y, cornerx, cornery)
         hover:
-          echo "Mouse Entered"
-          dragging = true
-          echo dragging
+          color = 30
         exit:
-          echo "Mouse Exited"
-          dragging = false
+          color = 27
         click:
-          echo "Mouse Clicked"
-          ui.closeSelf:
-            echo "Closed"
+          ui.close
 
 proc gameInit() =
   discard
